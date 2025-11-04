@@ -1,0 +1,265 @@
+# nice - Daily Positive Wishes Mini-App
+
+A Farcaster mini-app that delivers personalized daily positive wishes to users. Each user receives a deterministic wish based on their Farcaster ID and the current date, ensuring the same wish throughout the day and a different one each day.
+
+## ✨ Features
+
+- **Farcaster Quick Auth** - Seamless authentication using Farcaster identity
+- **Deterministic Wishes** - Same user gets the same wish all day, different wish each day
+- **FNV-1a Hash Algorithm** - Cryptographically sound wish selection
+- **Stateless Design** - No data storage, fully stateless application
+- **Mobile-Friendly** - Responsive design optimized for mobile devices
+- **Preview Functionality** - See tomorrow's wish with a single tap
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Node.js 18+ 
+- npm or yarn
+- Vercel account (for deployment)
+
+### Local Development
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd nice-miniapp
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Run development server**
+   ```bash
+   npm run dev
+   ```
+
+4. **Open your browser**
+   Navigate to `http://localhost:3000`
+
+   Note: In development mode, the app will use a mock user (FID: 12345) since Farcaster auth requires the mini-app environment.
+
+## 📋 Project Structure
+
+```
+/
+├── app/                    # Next.js 14 app directory
+│   ├── page.tsx           # Main page with auth & wish display
+│   ├── layout.tsx         # Root layout
+│   └── globals.css        # Global styles
+├── lib/
+│   ├── wishes.ts          # Wishes array (25 positive messages)
+│   └── hash.ts            # FNV-1a hash implementation
+├── public/
+│   ├── icon.svg           # App icon (smiling sun)
+│   └── manifest.json      # Farcaster mini-app manifest
+├── package.json
+├── tsconfig.json
+├── next.config.js
+├── vercel.json
+└── README.md
+```
+
+## 🔧 Technical Implementation
+
+### Authentication Flow
+
+The app uses Farcaster Quick Auth to authenticate users:
+
+1. On app load, it attempts to authenticate via Farcaster context
+2. Extracts the user's Farcaster ID (FID) from the authenticated session
+3. Uses the FID as the seed for deterministic wish selection
+
+### Wish Selection Algorithm
+
+The wish selection uses the FNV-1a hash algorithm:
+
+1. **Input**: `${fid}-${YYYY-MM-DD}` (user's FID + current date)
+2. **Process**: Apply FNV-1a hash to the input string
+3. **Output**: `hash % wishes.length` (index into the wishes array)
+
+This ensures:
+- Same user gets the same wish throughout the day
+- Different wish each day for each user
+- No state management required
+- Cryptographically sound distribution
+
+### Wishes Collection
+
+The app includes 25 carefully crafted positive wishes:
+- Encouraging and uplifting messages
+- Motivational and inspirational content
+- Focus on personal growth, kindness, and positivity
+- Updated regularly to maintain freshness
+
+## 🌐 Vercel Deployment
+
+### Step-by-Step Deployment Guide
+
+1. **Prepare your repository**
+   ```bash
+   git add .
+   git commit -m "Initial commit: nice mini-app"
+   git push origin main
+   ```
+
+2. **Connect to Vercel**
+   - Go to [vercel.com](https://vercel.com)
+   - Sign in with your GitHub account
+   - Click "Add New..." → "Project"
+   - Select your repository
+
+3. **Configure deployment settings**
+   - **Framework Preset**: Next.js (auto-detected)
+   - **Root Directory**: . (default)
+   - **Build Command**: `npm run build` (auto-detected)
+   - **Output Directory**: `.next` (auto-detected)
+   - **Install Command**: `npm install` (auto-detected)
+
+4. **Environment Variables** (if needed)
+   - `NEXT_PUBLIC_APP_URL`: Your deployed app URL (auto-set by Vercel)
+
+5. **Deploy**
+   - Click "Deploy"
+   - Wait for deployment to complete
+   - Your app will be available at a `*.vercel.app` domain
+
+6. **Custom Domain (Optional)**
+   - Go to your project settings in Vercel
+   - Navigate to "Domains"
+   - Add your custom domain and follow DNS instructions
+
+### Vercel Configuration
+
+The `vercel.json` file includes:
+- Build optimization settings
+- Regional deployment (Singapore region for better Asian market coverage)
+- Environment variable configuration
+
+## 🔗 Farcaster Mini-App Registration
+
+### Register Your Mini-App
+
+1. **Prepare App Information**
+   - **App Name**: "nice"
+   - **Description**: "A daily dose of positive wishes and inspiration"
+   - **Category**: Lifestyle
+   - **Icon**: Use the provided `/icon.svg`
+
+2. **Submit to Farcaster**
+   - Visit the Farcaster Mini-Apps developer portal
+   - Submit your app for review
+   - Provide your deployed Vercel URL
+   - Upload the app icon and manifest
+
+3. **Manifest Configuration**
+   The `public/manifest.json` includes:
+   - App metadata and branding
+   - Icon definitions
+   - Display settings for optimal Farcaster integration
+   - Shortcut configurations
+
+### Frame Metadata
+
+The app includes proper Open Graph and Twitter Card metadata for optimal display when shared in Farcaster frames.
+
+## 🧪 Testing
+
+### Local Testing
+
+```bash
+# Run development server
+npm run dev
+
+# Test in different viewports
+# Open browser dev tools and test mobile/responsive layouts
+```
+
+### Production Testing
+
+1. Deploy to Vercel
+2. Test the deployed URL
+3. Test in Farcaster client environment
+4. Verify authentication flow
+5. Test wish consistency (same user, same day = same wish)
+
+## 🔒 Security Considerations
+
+- **No User Data Storage**: The app is completely stateless
+- **Client-Side Hashing**: All computation happens on the client
+- **Farcaster Auth**: Uses secure Farcaster Quick Auth protocol
+- **No API Keys**: No sensitive information in the codebase
+
+## 🎨 Design System
+
+### Color Palette
+- **Primary**: Yellow (`#FFD700`)
+- **Secondary**: Orange (`#FFA500`)
+- **Background**: Light yellow gradient
+- **Text**: Dark gray for readability
+
+### Typography
+- **Font**: Inter (Google Fonts)
+- **Headings**: Bold, larger sizes
+- **Body**: Regular, optimized for readability
+
+### Components
+- **Cards**: Glass morphism effect with backdrop blur
+- **Buttons**: Gradient backgrounds with hover effects
+- **Icons**: Custom SVG icons for consistency
+
+## 📱 Mobile Optimization
+
+- Responsive design using Tailwind CSS
+- Touch-friendly button sizes
+- Optimized viewport settings
+- Fast loading times
+- Progressive Web App features
+
+## 🔄 Updates and Maintenance
+
+### Adding New Wishes
+
+1. Edit `lib/wishes.ts`
+2. Add new wishes to the array
+3. Maintain the same style and tone
+4. Test hash distribution
+
+### Updating Dependencies
+
+```bash
+npm update
+npm audit fix
+```
+
+### Monitoring
+
+- Use Vercel Analytics for performance monitoring
+- Monitor error logs in Vercel dashboard
+- Track user engagement through Farcaster analytics
+
+## 📄 License
+
+This project is open source and available under the MIT License.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## 📞 Support
+
+For issues or questions:
+- Create an issue in the GitHub repository
+- Contact the development team
+- Check the Farcaster Mini-Apps documentation
+
+---
+
+**Made with ❤️ for the Farcaster ecosystem**
