@@ -119,8 +119,12 @@ The app includes 25 carefully crafted positive wishes:
    - **Output Directory**: `.next` (auto-detected)
    - **Install Command**: `npm install` (auto-detected)
 
-4. **Environment Variables** (if needed)
-   - `NEXT_PUBLIC_APP_URL`: Your deployed app URL (auto-set by Vercel)
+4. **Environment Variables** (Optional)
+    - `NEXT_PUBLIC_APP_URL`: Your deployed app URL (e.g., https://your-app.vercel.app)
+      - **How to set**: Go to Vercel Dashboard → Settings → Environment Variables → Add New
+      - **Purpose**: Used for metadata generation and social sharing
+      - **Note**: This variable is optional! The app has built-in fallbacks and will work without it
+      - **When to set**: Only if you need custom metadata for social sharing or specific URL requirements
 
 5. **Deploy**
    - Click "Deploy"
@@ -137,7 +141,6 @@ The app includes 25 carefully crafted positive wishes:
 The `vercel.json` file includes:
 - Build optimization settings
 - Regional deployment (Singapore region for better Asian market coverage)
-- Environment variable configuration
 
 ## 🔗 Farcaster Mini-App Registration
 
