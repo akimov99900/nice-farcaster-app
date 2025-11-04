@@ -4,7 +4,7 @@ A Farcaster mini-app that delivers personalized daily positive wishes to users. 
 
 ## ✨ Features
 
-- **Farcaster Quick Auth** - Seamless authentication using Farcaster identity
+- **Farcaster Frame SDK** - Seamless authentication and integration using the official Farcaster SDK
 - **Deterministic Wishes** - Same user gets the same wish all day, different wish each day
 - **FNV-1a Hash Algorithm** - Cryptographically sound wish selection
 - **Stateless Design** - No data storage, fully stateless application
