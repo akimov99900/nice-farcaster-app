@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getTodaysWish, getWishForDate, getWishIndex } from '../lib/hash';
+import { getTodaysWish, getWishIndex } from '../lib/hash';
 import sdk from '@farcaster/frame-sdk';
 
 interface User {
@@ -11,17 +11,20 @@ interface User {
   pfpUrl?: string;
 }
 
-interface VoteStats {
+interface WishStatus {
+  wishIndex: number;
+  hasVoted: boolean;
   likes: number;
   dislikes: number;
-  hasVoted: boolean;
 }
+
+type AppState = 'loading' | 'not-revealed' | 'revealed-not-voted' | 'voted' | 'error';
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [todaysWish, setTodaysWish] = useState<string>('');
-  const [voteStats, setVoteStats] = useState<VoteStats | null>(null);
+  const [appState, setAppState] = useState<AppState>('loading');
+  const [wishText, setWishText] = useState<string>('');
+  const [wishStatus, setWishStatus] = useState<WishStatus | null>(null);
   const [isVoting, setIsVoting] = useState(false);
   const [currentWishIndex, setCurrentWishIndex] = useState<number>(0);
 
@@ -65,68 +68,67 @@ export default function Home() {
           username: 'demo',
           displayName: 'Demo User'
         });
-      } finally {
-        setIsLoading(false);
       }
     };
 
     init();
   }, []);
 
-  // Get wishes when user is available
+  // Check wish status when user is available
   useEffect(() => {
     if (user && user.fid) {
-      const today = new Date().toISOString().split('T')[0];
-
-      const wishIndex = getWishIndex(user.fid);
-      setCurrentWishIndex(wishIndex);
-      setTodaysWish(getTodaysWish(user.fid));
-      
-      // Load vote stats for today's wish
-      loadVoteStats(user.fid, wishIndex, today);
+      checkWishStatus(user.fid);
     }
   }, [user]);
 
-  // Load vote statistics
-  const loadVoteStats = async (fid: number, wishIndex: number, date: string) => {
+  const checkWishStatus = async (fid: number) => {
     try {
-      const response = await fetch('/api/vote', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fid: fid.toString(),
-          wishIndex,
-          vote: 'like', // This won't be used since we're just checking
-          date
-        }),
-      });
+      const today = new Date().toISOString().split('T')[0];
       
+      const response = await fetch(`/api/wish-status?fid=${fid}&date=${today}`);
       if (response.ok) {
         const data = await response.json();
-        setVoteStats(data);
-      } else {
-        // Fallback to GET request if POST fails
-        const getResponse = await fetch(`/api/vote?date=${date}&wishIndex=${wishIndex}`);
-        if (getResponse.ok) {
-          const data = await getResponse.json();
-          setVoteStats({
-            likes: data.likes,
-            dislikes: data.dislikes,
-            hasVoted: false
-          });
+        setWishStatus(data);
+        setCurrentWishIndex(data.wishIndex);
+        
+        // Determine app state based on whether user has already voted
+        if (data.hasVoted) {
+          setWishText(getTodaysWish(fid));
+          setAppState('voted');
+        } else {
+          setAppState('not-revealed');
         }
+      } else {
+        setAppState('error');
+      }
+    } catch (error) {
+      console.error('Failed to check wish status:', error);
+      setAppState('error');
+    }
+  };
+
+  const handleShowWish = async () => {
+    if (!user) return;
+    
+    setWishText(getTodaysWish(user.fid));
+    
+    // Load current vote statistics
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const response = await fetch(`/api/vote?date=${today}&wishIndex=${currentWishIndex}`);
+      if (response.ok) {
+        const data = await response.json();
+        setWishStatus(prev => ({
+          ...prev!,
+          likes: data.likes,
+          dislikes: data.dislikes
+        }));
       }
     } catch (error) {
       console.error('Failed to load vote stats:', error);
-      // Set default stats on error
-      setVoteStats({
-        likes: 0,
-        dislikes: 0,
-        hasVoted: false
-      });
     }
+    
+    setAppState('revealed-not-voted');
   };
 
   const handleVote = async (voteType: 'like' | 'dislike') => {
@@ -151,7 +153,13 @@ export default function Home() {
       
       if (response.ok) {
         const data = await response.json();
-        setVoteStats(data);
+        setWishStatus({
+          wishIndex: currentWishIndex,
+          hasVoted: true,
+          likes: data.likes,
+          dislikes: data.dislikes
+        });
+        setAppState('voted');
       }
     } catch (error) {
       console.error('Failed to vote:', error);
@@ -160,20 +168,22 @@ export default function Home() {
     }
   };
 
-  if (isLoading) {
+  if (appState === 'loading') {
     return (
-      <div className="auth-container">
-        <div className="text-center">
-          <div className="loading-spinner mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading your daily wish...</p>
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="wish-card">
+          <div className="text-center">
+            <div className="loading-spinner mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading your daily wish...</p>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (!user) {
+  if (appState === 'error' || !user) {
     return (
-      <div className="auth-container">
+      <div className="min-h-screen flex items-center justify-center p-4">
         <div className="wish-card">
           <div className="text-center">
             <h1 className="text-2xl font-bold text-gray-800 mb-4">Welcome to nice</h1>
@@ -211,69 +221,88 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Wish Display */}
-        <div className="wish-text">
-          "{todaysWish}"
-        </div>
+        {/* State A: Not Revealed */}
+        {appState === 'not-revealed' && (
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-800 mb-4">Get your daily wish!</h1>
+            <p className="text-gray-600 mb-8">
+              Your personalized positive wish is waiting for you
+            </p>
+            <button
+              onClick={handleShowWish}
+              className="bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-bold py-3 px-8 rounded-full transition-all duration-200 transform hover:scale-105 shadow-lg"
+            >
+              Show My Wish
+            </button>
+          </div>
+        )}
 
-        {/* Voting Section */}
-        {voteStats && (
-          <div className="voting-section">
-            {/* Thank you message or voting buttons */}
-            {voteStats.hasVoted ? (
-              <div className="text-center mb-4">
-                <p className="text-lg font-semibold text-green-600 mb-2">
-                  🎉 Thank you for voting!
-                </p>
-                <div className="vote-stats">
-                  <span className="text-sm text-gray-600">
-                    {voteStats.likes + voteStats.dislikes} vote{voteStats.likes + voteStats.dislikes !== 1 ? 's' : ''}
-                  </span>
-                  {voteStats.likes > 0 && voteStats.dislikes > 0 && (
-                    <span className="text-sm text-gray-500">
-                      {' '}({voteStats.likes} like{voteStats.likes !== 1 ? 's' : ''}, {voteStats.dislikes} dislike{voteStats.dislikes !== 1 ? 's' : ''})
-                    </span>
-                  )}
-                </div>
+        {/* State B: Revealed, Not Voted */}
+        {appState === 'revealed-not-voted' && (
+          <div>
+            <div className="wish-text mb-6">
+              "{wishText}"
+            </div>
+
+            {/* Current stats */}
+            <div className="text-center mb-6">
+              <div className="vote-stats">
+                <span className="text-sm text-gray-600">
+                  {wishStatus && wishStatus.likes + wishStatus.dislikes > 0 
+                    ? `Current stats: ${wishStatus.likes} like${wishStatus.likes !== 1 ? 's' : ''}, ${wishStatus.dislikes} dislike${wishStatus.dislikes !== 1 ? 's' : ''}`
+                    : 'Be the first to vote!'
+                  }
+                </span>
               </div>
-            ) : (
-              <>
-                {/* Current stats */}
-                <div className="text-center mb-4">
-                  <div className="vote-stats">
-                    <span className="text-sm text-gray-600">
-                      {voteStats.likes + voteStats.dislikes > 0 
-                        ? `${voteStats.likes + voteStats.dislikes} vote${voteStats.likes + voteStats.dislikes !== 1 ? 's' : ''}`
-                        : 'Be the first to vote!'
-                      }
-                    </span>
-                  </div>
-                </div>
-                
-                {/* Voting buttons */}
-                <div className="flex gap-3 justify-center">
-                  <button
-                    onClick={() => handleVote('like')}
-                    disabled={isVoting}
-                    className="vote-btn like-btn"
-                  >
-                    {isVoting ? '...' : '👍 Like'}
-                  </button>
-                  <button
-                    onClick={() => handleVote('dislike')}
-                    disabled={isVoting}
-                    className="vote-btn dislike-btn"
-                  >
-                    {isVoting ? '...' : '👎 Dislike'}
-                  </button>
-                </div>
-              </>
-            )}
+            </div>
+            
+            {/* Voting buttons */}
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => handleVote('like')}
+                disabled={isVoting}
+                className="vote-btn like-btn"
+              >
+                {isVoting ? '...' : '👍 Like'}
+              </button>
+              <button
+                onClick={() => handleVote('dislike')}
+                disabled={isVoting}
+                className="vote-btn dislike-btn"
+              >
+                {isVoting ? '...' : '👎 Dislike'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* State C: Voted */}
+        {appState === 'voted' && (
+          <div>
+            <div className="wish-text mb-6">
+              "{wishText}"
+            </div>
+
+            <div className="text-center">
+              <p className="text-lg font-semibold text-green-600 mb-4">
+                🎉 Thank you!
+              </p>
+              <div className="vote-stats">
+                <span className="text-sm text-gray-600">
+                  {wishStatus && (
+                    <>
+                      Updated stats: {wishStatus.likes} like{wishStatus.likes !== 1 ? 's' : ''}, {wishStatus.dislikes} dislike{wishStatus.dislikes !== 1 ? 's' : ''}
+                      {' '}({wishStatus.likes + wishStatus.dislikes} total vote{wishStatus.likes + wishStatus.dislikes !== 1 ? 's' : ''})
+                    </>
+                  )}
+                </span>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Footer */}
-        <div className="mt-6 pt-6 border-t border-yellow-200 text-center">
+        <div className="mt-8 pt-6 border-t border-yellow-200 text-center">
           <p className="text-xs text-gray-500">
             Your wish is personalized just for you based on your Farcaster ID
           </p>

@@ -1,4 +1,3 @@
-import { kv } from '@vercel/kv';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -20,41 +19,53 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const likesKey = `nice:vote:${date}:${wishIndex}:likes`;
-    const dislikesKey = `nice:vote:${date}:${wishIndex}:dislikes`;
-    const votersKey = `nice:vote:${date}:${wishIndex}:voters`;
-    
-    // Check if already voted
-    const hasVoted = await kv.sismember(votersKey, fid.toString());
-    
-    if (hasVoted) {
-      // Return current stats
+    try {
+      const { kv } = await import('@vercel/kv');
+      
+      const likesKey = `nice:vote:${date}:${wishIndex}:likes`;
+      const dislikesKey = `nice:vote:${date}:${wishIndex}:dislikes`;
+      const votersKey = `nice:vote:${date}:${wishIndex}:voters`;
+      
+      // Check if already voted
+      const hasVoted = (await kv.sismember(votersKey, fid.toString())) === 1;
+      
+      if (hasVoted) {
+        // Return current stats
+        const likes = await kv.get(likesKey) || 0;
+        const dislikes = await kv.get(dislikesKey) || 0;
+        return NextResponse.json({ 
+          hasVoted: true, 
+          likes: Number(likes), 
+          dislikes: Number(dislikes) 
+        });
+      }
+      
+      // Record vote
+      if (vote === 'like') {
+        await kv.incr(likesKey);
+      } else {
+        await kv.incr(dislikesKey);
+      }
+      
+      await kv.sadd(votersKey, fid.toString());
+      
       const likes = await kv.get(likesKey) || 0;
       const dislikes = await kv.get(dislikesKey) || 0;
+      
       return NextResponse.json({ 
         hasVoted: true, 
         likes: Number(likes), 
         dislikes: Number(dislikes) 
       });
+    } catch (kvError) {
+      // KV not available (development mode), simulate voting
+      console.log('KV not available, simulating vote');
+      return NextResponse.json({ 
+        hasVoted: true, 
+        likes: vote === 'like' ? 1 : 0, 
+        dislikes: vote === 'dislike' ? 1 : 0 
+      });
     }
-    
-    // Record vote
-    if (vote === 'like') {
-      await kv.incr(likesKey);
-    } else {
-      await kv.incr(dislikesKey);
-    }
-    
-    await kv.sadd(votersKey, fid.toString());
-    
-    const likes = await kv.get(likesKey) || 0;
-    const dislikes = await kv.get(dislikesKey) || 0;
-    
-    return NextResponse.json({ 
-      hasVoted: true, 
-      likes: Number(likes), 
-      dislikes: Number(dislikes) 
-    });
     
   } catch (error) {
     console.error('Vote API error:', error);
@@ -78,16 +89,27 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    const likesKey = `nice:vote:${date}:${wishIndex}:likes`;
-    const dislikesKey = `nice:vote:${date}:${wishIndex}:dislikes`;
-    
-    const likes = await kv.get(likesKey) || 0;
-    const dislikes = await kv.get(dislikesKey) || 0;
-    
-    return NextResponse.json({ 
-      likes: Number(likes), 
-      dislikes: Number(dislikes) 
-    });
+    try {
+      const { kv } = await import('@vercel/kv');
+      
+      const likesKey = `nice:vote:${date}:${wishIndex}:likes`;
+      const dislikesKey = `nice:vote:${date}:${wishIndex}:dislikes`;
+      
+      const likes = await kv.get(likesKey) || 0;
+      const dislikes = await kv.get(dislikesKey) || 0;
+      
+      return NextResponse.json({ 
+        likes: Number(likes), 
+        dislikes: Number(dislikes) 
+      });
+    } catch (kvError) {
+      // KV not available (development mode), return defaults
+      console.log('KV not available, returning default vote stats');
+      return NextResponse.json({ 
+        likes: 0, 
+        dislikes: 0 
+      });
+    }
     
   } catch (error) {
     console.error('Vote stats API error:', error);

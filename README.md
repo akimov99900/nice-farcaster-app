@@ -5,6 +5,7 @@ A Farcaster mini-app that delivers personalized daily positive wishes to users. 
 ## ✨ Features
 
 - **Farcaster Frame SDK** - Seamless authentication and integration using the official Farcaster SDK
+- **Wish Reveal Flow** - Interactive "Show My Wish" button for engaging user experience
 - **Deterministic Wishes** - Same user gets the same wish all day, different wish each day
 - **FNV-1a Hash Algorithm** - Cryptographically sound wish selection
 - **Voting System** - Like/Dislike functionality with Vercel KV storage
@@ -46,14 +47,16 @@ A Farcaster mini-app that delivers personalized daily positive wishes to users. 
 ## 📋 Project Structure
 
 ```
-/
-├── app/                    # Next.js 14 app directory
-│   ├── api/
-│   │   └── vote/
-│   │       └── route.ts    # Voting API endpoint (Vercel KV)
-│   ├── page.tsx           # Main page with auth, wish display & voting
-│   ├── layout.tsx         # Root layout
-│   └── globals.css        # Global styles (including voting styles)
+ /
+ ├── app/                    # Next.js 14 app directory
+ │   ├── api/
+ │   │   ├── vote/
+ │   │   │   └── route.ts    # Voting API endpoint (Vercel KV)
+ │   │   └── wish-status/
+ │   │       └── route.ts    # Wish status API endpoint
+ │   ├── page.tsx           # Main page with wish reveal flow & voting
+ │   ├── layout.tsx         # Root layout
+ │   └── globals.css        # Global styles (including voting styles)
 ├── lib/
 │   ├── wishes.ts          # Wishes array (25 positive messages)
 │   └── hash.ts            # FNV-1a hash implementation
@@ -117,13 +120,15 @@ nice:vote:{date}:{wishIndex}:voters     -> set of FID strings
 - **User Feedback**: "Thank you!" message displayed after voting
 
 #### API Endpoints
-- **POST /api/vote**: Submit a vote or check voting status
+- **GET /api/wish-status**: Check if user has already voted and get wish details
+- **POST /api/vote**: Submit a vote
 - **GET /api/vote**: Get current vote statistics
 
-#### UI Flow
-1. **Initial State**: Display wish with Like/Dislike buttons and current statistics
-2. **After Voting**: Show "Thank you!" message with updated statistics
-3. **Revisit**: Display "Thank you!" message if already voted today
+#### User Flow
+1. **Initial Screen**: Welcome message with "Show My Wish" button
+2. **Wish Revealed**: Display wish with Like/Dislike buttons and current statistics
+3. **After Voting**: Show "Thank you!" message with updated statistics
+4. **Revisit Same Day**: Skip to "Thank you!" state if already voted
 
 ## 🌐 Vercel Deployment
 
