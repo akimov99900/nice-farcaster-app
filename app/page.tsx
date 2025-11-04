@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getTodaysWish, getWishForDate } from '../lib/hash';
+import { getTodaysWish, getWishForDate, getWishIndex } from '../lib/hash';
 import sdk from '@farcaster/frame-sdk';
 
 interface User {
@@ -11,12 +11,19 @@ interface User {
   pfpUrl?: string;
 }
 
+interface VoteStats {
+  likes: number;
+  dislikes: number;
+  hasVoted: boolean;
+}
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [todaysWish, setTodaysWish] = useState<string>('');
-  const [tomorrowsWish, setTomorrowsWish] = useState<string>('');
-  const [showTomorrow, setShowTomorrow] = useState(false);
+  const [voteStats, setVoteStats] = useState<VoteStats | null>(null);
+  const [isVoting, setIsVoting] = useState(false);
+  const [currentWishIndex, setCurrentWishIndex] = useState<number>(0);
 
   // Initialize Farcaster SDK and authentication
   useEffect(() => {
@@ -70,21 +77,87 @@ export default function Home() {
   useEffect(() => {
     if (user && user.fid) {
       const today = new Date().toISOString().split('T')[0];
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
+      const wishIndex = getWishIndex(user.fid);
+      setCurrentWishIndex(wishIndex);
       setTodaysWish(getTodaysWish(user.fid));
-      setTomorrowsWish(getWishForDate(user.fid, tomorrowStr));
+      
+      // Load vote stats for today's wish
+      loadVoteStats(user.fid, wishIndex, today);
     }
   }, [user]);
 
-  const handleNewWish = () => {
-    setShowTomorrow(true);
+  // Load vote statistics
+  const loadVoteStats = async (fid: number, wishIndex: number, date: string) => {
+    try {
+      const response = await fetch('/api/vote', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fid: fid.toString(),
+          wishIndex,
+          vote: 'like', // This won't be used since we're just checking
+          date
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setVoteStats(data);
+      } else {
+        // Fallback to GET request if POST fails
+        const getResponse = await fetch(`/api/vote?date=${date}&wishIndex=${wishIndex}`);
+        if (getResponse.ok) {
+          const data = await getResponse.json();
+          setVoteStats({
+            likes: data.likes,
+            dislikes: data.dislikes,
+            hasVoted: false
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load vote stats:', error);
+      // Set default stats on error
+      setVoteStats({
+        likes: 0,
+        dislikes: 0,
+        hasVoted: false
+      });
+    }
   };
 
-  const handleBackToToday = () => {
-    setShowTomorrow(false);
+  const handleVote = async (voteType: 'like' | 'dislike') => {
+    if (!user || isVoting) return;
+    
+    setIsVoting(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      const response = await fetch('/api/vote', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fid: user.fid.toString(),
+          wishIndex: currentWishIndex,
+          vote: voteType,
+          date: today
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setVoteStats(data);
+      }
+    } catch (error) {
+      console.error('Failed to vote:', error);
+    } finally {
+      setIsVoting(false);
+    }
   };
 
   if (isLoading) {
@@ -116,10 +189,7 @@ export default function Home() {
     );
   }
 
-  const currentWish = showTomorrow ? tomorrowsWish : todaysWish;
-  const currentDate = showTomorrow 
-    ? new Date(Date.now() + 86400000).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-    : new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4">
@@ -143,27 +213,64 @@ export default function Home() {
 
         {/* Wish Display */}
         <div className="wish-text">
-          "{currentWish}"
+          "{todaysWish}"
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-col gap-3">
-          {!showTomorrow ? (
-            <button 
-              onClick={handleNewWish}
-              className="btn-primary"
-            >
-              ✨ Preview Tomorrow's Wish
-            </button>
-          ) : (
-            <button 
-              onClick={handleBackToToday}
-              className="btn-primary"
-            >
-              📅 Back to Today's Wish
-            </button>
-          )}
-        </div>
+        {/* Voting Section */}
+        {voteStats && (
+          <div className="voting-section">
+            {/* Thank you message or voting buttons */}
+            {voteStats.hasVoted ? (
+              <div className="text-center mb-4">
+                <p className="text-lg font-semibold text-green-600 mb-2">
+                  🎉 Thank you for voting!
+                </p>
+                <div className="vote-stats">
+                  <span className="text-sm text-gray-600">
+                    {voteStats.likes + voteStats.dislikes} vote{voteStats.likes + voteStats.dislikes !== 1 ? 's' : ''}
+                  </span>
+                  {voteStats.likes > 0 && voteStats.dislikes > 0 && (
+                    <span className="text-sm text-gray-500">
+                      {' '}({voteStats.likes} like{voteStats.likes !== 1 ? 's' : ''}, {voteStats.dislikes} dislike{voteStats.dislikes !== 1 ? 's' : ''})
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Current stats */}
+                <div className="text-center mb-4">
+                  <div className="vote-stats">
+                    <span className="text-sm text-gray-600">
+                      {voteStats.likes + voteStats.dislikes > 0 
+                        ? `${voteStats.likes + voteStats.dislikes} vote${voteStats.likes + voteStats.dislikes !== 1 ? 's' : ''}`
+                        : 'Be the first to vote!'
+                      }
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Voting buttons */}
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={() => handleVote('like')}
+                    disabled={isVoting}
+                    className="vote-btn like-btn"
+                  >
+                    {isVoting ? '...' : '👍 Like'}
+                  </button>
+                  <button
+                    onClick={() => handleVote('dislike')}
+                    disabled={isVoting}
+                    className="vote-btn dislike-btn"
+                  >
+                    {isVoting ? '...' : '👎 Dislike'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Footer */}
         <div className="mt-6 pt-6 border-t border-yellow-200 text-center">

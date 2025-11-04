@@ -68,3 +68,23 @@ a {
 .loading-spinner {
   @apply animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-600;
 }
+
+.voting-section {
+  @apply mb-6 p-4 bg-yellow-50/50 rounded-xl border border-yellow-200;
+}
+
+.vote-stats {
+  @apply text-center;
+}
+
+.vote-btn {
+  @apply px-6 py-3 rounded-full font-semibold shadow-md transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none;
+}
+
+.like-btn {
+  @apply bg-green-500 text-white hover:bg-green-600 hover:shadow-lg;
+}
+
+.dislike-btn {
+  @apply bg-red-500 text-white hover:bg-red-600 hover:shadow-lg;
+}
