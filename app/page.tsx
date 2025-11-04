@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { getTodaysWish, getWishForDate } from '../lib/hash';
+import sdk from '@farcaster/frame-sdk';
 
 interface User {
   fid: number;
@@ -17,35 +18,40 @@ export default function Home() {
   const [tomorrowsWish, setTomorrowsWish] = useState<string>('');
   const [showTomorrow, setShowTomorrow] = useState(false);
 
-  // Initialize Farcaster Quick Auth
+  // Initialize Farcaster SDK and authentication
   useEffect(() => {
-    const initAuth = async () => {
+    const init = async () => {
       try {
-        // Check if running in Farcaster environment
-        if (typeof window !== 'undefined' && window.parent !== window) {
-          // Try to get user data from Farcaster context
-          const farcasterUser = await getFarcasterUser();
-          if (farcasterUser) {
-            setUser(farcasterUser);
-          } else {
-            // Fallback for development/testing
-            setUser({
-              fid: 12345,
-              username: 'demo',
-              displayName: 'Demo User'
-            });
-          }
-        } else {
-          // Fallback for development - use a mock user
-          const mockFid = Math.floor(Math.random() * 1000000) + 1;
+        // Initialize the SDK
+        await sdk.actions.ready();
+        
+        // Get user data from SDK context
+        const context = await sdk.context;
+        if (context && context.user) {
           setUser({
-            fid: mockFid,
+            fid: context.user.fid,
+            username: context.user.username,
+            displayName: context.user.displayName,
+            pfpUrl: context.user.pfpUrl
+          });
+        } else {
+          // Fallback for development/testing
+          setUser({
+            fid: 12345,
             username: 'demo',
             displayName: 'Demo User'
           });
         }
       } catch (error) {
-        console.error('Auth error:', error);
+        console.error('SDK initialization error:', error);
+        
+        // Always try to call ready() even if there's an error
+        try {
+          await sdk.actions.ready();
+        } catch (readyError) {
+          console.error('Ready call failed:', readyError);
+        }
+        
         // Fallback for development
         setUser({
           fid: 12345,
@@ -57,7 +63,7 @@ export default function Home() {
       }
     };
 
-    initAuth();
+    init();
   }, []);
 
   // Get wishes when user is available
@@ -72,47 +78,6 @@ export default function Home() {
       setTomorrowsWish(getWishForDate(user.fid, tomorrowStr));
     }
   }, [user]);
-
-  const getFarcasterUser = async (): Promise<User | null> => {
-    return new Promise((resolve) => {
-      // In a real Farcaster mini-app, this would use the Farcaster Auth Kit
-      // For now, we'll simulate the auth process
-      
-      // Try to get user data from parent window (Farcaster client)
-      try {
-        // Check if we have access to Farcaster context
-        if (window.parent && window.parent !== window) {
-          window.parent.postMessage({
-            type: 'FARCASTER_AUTH_REQUEST',
-            origin: window.location.origin
-          }, '*');
-
-          const handleMessage = (event: MessageEvent) => {
-            // Security check - only accept messages from same origin
-            if (event.origin !== window.location.origin) return;
-            
-            if (event.data.type === 'FARCASTER_AUTH_RESPONSE') {
-              window.removeEventListener('message', handleMessage);
-              resolve(event.data.user || null);
-            }
-          };
-
-          window.addEventListener('message', handleMessage);
-
-          // Timeout fallback - return null to use mock user
-          setTimeout(() => {
-            window.removeEventListener('message', handleMessage);
-            resolve(null);
-          }, 3000);
-        } else {
-          resolve(null);
-        }
-      } catch (error) {
-        console.log('Farcaster auth not available, using fallback');
-        resolve(null);
-      }
-    });
-  };
 
   const handleNewWish = () => {
     setShowTomorrow(true);
