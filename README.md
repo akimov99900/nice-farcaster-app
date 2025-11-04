@@ -7,9 +7,10 @@ A Farcaster mini-app that delivers personalized daily positive wishes to users. 
 - **Farcaster Frame SDK** - Seamless authentication and integration using the official Farcaster SDK
 - **Deterministic Wishes** - Same user gets the same wish all day, different wish each day
 - **FNV-1a Hash Algorithm** - Cryptographically sound wish selection
-- **Stateless Design** - No data storage, fully stateless application
+- **Voting System** - Like/Dislike functionality with Vercel KV storage
+- **Vote Statistics** - Real-time vote counts and user feedback
 - **Mobile-Friendly** - Responsive design optimized for mobile devices
-- **Preview Functionality** - See tomorrow's wish with a single tap
+- **One Vote Per Day** - Users can vote once per day per wish
 
 ## 🚀 Quick Start
 
@@ -47,16 +48,19 @@ A Farcaster mini-app that delivers personalized daily positive wishes to users. 
 ```
 /
 ├── app/                    # Next.js 14 app directory
-│   ├── page.tsx           # Main page with auth & wish display
+│   ├── api/
+│   │   └── vote/
+│   │       └── route.ts    # Voting API endpoint (Vercel KV)
+│   ├── page.tsx           # Main page with auth, wish display & voting
 │   ├── layout.tsx         # Root layout
-│   └── globals.css        # Global styles
+│   └── globals.css        # Global styles (including voting styles)
 ├── lib/
 │   ├── wishes.ts          # Wishes array (25 positive messages)
 │   └── hash.ts            # FNV-1a hash implementation
 ├── public/
 │   ├── icon.svg           # App icon (smiling sun)
 │   └── manifest.json      # Farcaster mini-app manifest
-├── package.json
+├── package.json           # Dependencies including @vercel/kv
 ├── tsconfig.json
 ├── next.config.js
 ├── vercel.json
@@ -95,6 +99,32 @@ The app includes 25 carefully crafted positive wishes:
 - Focus on personal growth, kindness, and positivity
 - Updated regularly to maintain freshness
 
+### Voting System
+
+The app includes a comprehensive voting system powered by Vercel KV:
+
+#### Storage Schema
+```
+nice:vote:{date}:{wishIndex}:likes      -> integer counter
+nice:vote:{date}:{wishIndex}:dislikes   -> integer counter  
+nice:vote:{date}:{wishIndex}:voters     -> set of FID strings
+```
+
+#### Voting Logic
+- **One Vote Per Day**: Each user (FID) can vote once per day per wish
+- **Real-time Updates**: Statistics update immediately after voting
+- **Vote Persistence**: All votes are stored in Vercel KV for durability
+- **User Feedback**: "Thank you!" message displayed after voting
+
+#### API Endpoints
+- **POST /api/vote**: Submit a vote or check voting status
+- **GET /api/vote**: Get current vote statistics
+
+#### UI Flow
+1. **Initial State**: Display wish with Like/Dislike buttons and current statistics
+2. **After Voting**: Show "Thank you!" message with updated statistics
+3. **Revisit**: Display "Thank you!" message if already voted today
+
 ## 🌐 Vercel Deployment
 
 ### Step-by-Step Deployment Guide
@@ -119,14 +149,25 @@ The app includes 25 carefully crafted positive wishes:
    - **Output Directory**: `.next` (auto-detected)
    - **Install Command**: `npm install` (auto-detected)
 
-4. **Environment Variables** (Optional)
-    - `NEXT_PUBLIC_APP_URL`: Your deployed app URL (e.g., https://your-app.vercel.app)
-      - **How to set**: Go to Vercel Dashboard → Settings → Environment Variables → Add New
-      - **Purpose**: Used for metadata generation and social sharing
-      - **Note**: This variable is optional! The app has built-in fallbacks and will work without it
-      - **When to set**: Only if you need custom metadata for social sharing or specific URL requirements
+4. **Enable Vercel KV** (Required for voting functionality)
+    - Go to your Vercel project dashboard
+    - Click "Storage" tab in the left sidebar
+    - Click "Create Database" → "KV"
+    - Choose a region (recommended: same as your app deployment)
+    - Click "Create"
+    - Vercel will automatically configure the required environment variables:
+      - `KV_URL`
+      - `KV_REST_API_URL`
+      - `KV_REST_API_TOKEN`
 
-5. **Deploy**
+5. **Environment Variables** (Optional)
+     - `NEXT_PUBLIC_APP_URL`: Your deployed app URL (e.g., https://your-app.vercel.app)
+       - **How to set**: Go to Vercel Dashboard → Settings → Environment Variables → Add New
+       - **Purpose**: Used for metadata generation and social sharing
+       - **Note**: This variable is optional! The app has built-in fallbacks and will work without it
+       - **When to set**: Only if you need custom metadata for social sharing or specific URL requirements
+
+6. **Deploy**
    - Click "Deploy"
    - Wait for deployment to complete
    - Your app will be available at a `*.vercel.app` domain
@@ -188,13 +229,20 @@ npm run dev
 3. Test in Farcaster client environment
 4. Verify authentication flow
 5. Test wish consistency (same user, same day = same wish)
+6. Test voting functionality:
+   - Verify Like/Dislike buttons appear
+   - Test that voting updates statistics immediately
+   - Verify "Thank you!" message appears after voting
+   - Test that users cannot vote again on same day
+   - Check vote persistence across browser sessions
 
 ## 🔒 Security Considerations
 
-- **No User Data Storage**: The app is completely stateless
-- **Client-Side Hashing**: All computation happens on the client
+- **Minimal Data Storage**: Only stores vote counts and FIDs in Vercel KV
+- **Client-Side Hashing**: Wish selection happens on the client
 - **Farcaster Auth**: Uses secure Farcaster Quick Auth protocol
-- **No API Keys**: No sensitive information in the codebase
+- **Vote Validation**: Server-side validation prevents duplicate voting
+- **No PII Storage**: Only Farcaster IDs (public identifiers) are stored
 
 ## 🎨 Design System
 

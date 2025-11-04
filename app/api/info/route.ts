@@ -10,7 +10,8 @@ export async function GET(request: NextRequest) {
       description: 'A daily dose of positive wishes and inspiration',
       endpoints: {
         health: '/api/health',
-        info: '/api/info'
+        info: '/api/info',
+        vote: '/api/vote'
       }
     });
   } catch (error) {
