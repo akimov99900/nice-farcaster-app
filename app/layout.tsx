@@ -40,9 +40,7 @@ export default function RootLayout({
         <link rel="icon" href="/icon.svg" />
       </head>
       <body className={inter.className}>
-        <div className="min-h-screen bg-gradient-to-br from-yellow-100 via-yellow-50 to-orange-50">
-          {children}
-        </div>
+        {children}
       </body>
     </html>
   )
