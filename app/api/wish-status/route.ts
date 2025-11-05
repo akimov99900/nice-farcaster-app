@@ -32,33 +32,22 @@ export async function GET(request: NextRequest) {
     const wishIndex = fnv1aHash(`${fid}-${date}`) % 25;
     
     // Try to get vote data from KV, but handle gracefully if not available
-    let likes = 0;
-    let dislikes = 0;
     let hasVoted = false;
     
     try {
       const { kv } = await import('@vercel/kv');
       
-      const likesKey = `nice:vote:${date}:${wishIndex}:likes`;
-      const dislikesKey = `nice:vote:${date}:${wishIndex}:dislikes`;
       const votersKey = `nice:vote:${date}:${wishIndex}:voters`;
-      
-      likes = await kv.get(likesKey) || 0;
-      dislikes = await kv.get(dislikesKey) || 0;
       hasVoted = (await kv.sismember(votersKey, fid)) === 1;
     } catch (kvError) {
       // KV not available (development mode), use defaults
       console.log('KV not available, using defaults for wish status');
-      likes = 0;
-      dislikes = 0;
       hasVoted = false;
     }
     
     return NextResponse.json({ 
       wishIndex: Number(wishIndex), 
-      hasVoted: Boolean(hasVoted), 
-      likes: Number(likes), 
-      dislikes: Number(dislikes) 
+      hasVoted: Boolean(hasVoted)
     });
     
   } catch (error) {
