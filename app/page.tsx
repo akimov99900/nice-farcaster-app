@@ -14,11 +14,9 @@ interface User {
 interface WishStatus {
   wishIndex: number;
   hasVoted: boolean;
-  likes: number;
-  dislikes: number;
 }
 
-type AppState = 'loading' | 'not-revealed' | 'revealed-not-voted' | 'voted' | 'error';
+type AppState = 'loading' | 'not-revealed' | 'revealed-not-voted' | 'voted' | 'error' | 'share-payment' | 'share-success';
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -26,6 +24,8 @@ export default function Home() {
   const [wishText, setWishText] = useState<string>('');
   const [wishStatus, setWishStatus] = useState<WishStatus | null>(null);
   const [isVoting, setIsVoting] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareImageUrl, setShareImageUrl] = useState<string>('');
   const [currentWishIndex, setCurrentWishIndex] = useState<number>(0);
 
   // Initialize Farcaster SDK and authentication
@@ -111,23 +111,6 @@ export default function Home() {
     if (!user) return;
     
     setWishText(getTodaysWish(user.fid));
-    
-    // Load current vote statistics
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const response = await fetch(`/api/vote?date=${today}&wishIndex=${currentWishIndex}`);
-      if (response.ok) {
-        const data = await response.json();
-        setWishStatus(prev => ({
-          ...prev!,
-          likes: data.likes,
-          dislikes: data.dislikes
-        }));
-      }
-    } catch (error) {
-      console.error('Failed to load vote stats:', error);
-    }
-    
     setAppState('revealed-not-voted');
   };
 
@@ -152,12 +135,9 @@ export default function Home() {
       });
       
       if (response.ok) {
-        const data = await response.json();
         setWishStatus({
           wishIndex: currentWishIndex,
-          hasVoted: true,
-          likes: data.likes,
-          dislikes: data.dislikes
+          hasVoted: true
         });
         setAppState('voted');
       }
@@ -166,6 +146,97 @@ export default function Home() {
     } finally {
       setIsVoting(false);
     }
+  };
+
+  const handleShare = () => {
+    setAppState('share-payment');
+  };
+
+  const handlePayment = async () => {
+    if (!user) return;
+    
+    setIsSharing(true);
+    try {
+      // For now, simulate payment and proceed to image generation
+      // In a real implementation, you would integrate with Base network payments
+      console.log('Processing payment for share functionality...');
+      
+      // Simulate payment processing delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Generate share image after "successful" payment
+      await generateShareImage();
+      setAppState('share-success');
+    } catch (error) {
+      console.error('Payment failed:', error);
+      setAppState('revealed-not-voted');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const generateShareImage = async () => {
+    if (!user || !wishText) return;
+    
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const response = await fetch('/api/generate-share-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wishText,
+          date: today,
+          username: user.username || user.displayName
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setShareImageUrl(data.imageUrl);
+      }
+    } catch (error) {
+      console.error('Failed to generate share image:', error);
+    }
+  };
+
+  const handlePostToFarcaster = async () => {
+    if (!shareImageUrl || !user) return;
+    
+    try {
+      // Create a cast with the share image
+      const castText = `✨ My daily wish from nice:\n\n"${wishText}"\n\nGet your daily wish at nice!`;
+      
+      // Try to use composeCast if available, otherwise fallback to copying text
+      if (sdk.actions.composeCast) {
+        await sdk.actions.composeCast({
+          text: castText,
+          embeds: [shareImageUrl]
+        });
+      } else {
+        // Fallback: copy text to clipboard
+        await navigator.clipboard.writeText(castText + '\n\n' + shareImageUrl);
+        alert('Cast text and image URL copied to clipboard!');
+      }
+    } catch (error) {
+      console.error('Failed to post to Farcaster:', error);
+      // Fallback: copy text to clipboard
+      const castText = `✨ My daily wish from nice:\n\n"${wishText}"\n\nGet your daily wish at nice!`;
+      await navigator.clipboard.writeText(castText + '\n\n' + shareImageUrl);
+      alert('Cast text and image URL copied to clipboard!');
+    }
+  };
+
+  const handleDownloadImage = () => {
+    if (!shareImageUrl) return;
+    
+    const link = document.createElement('a');
+    link.href = shareImageUrl;
+    link.download = `nice-wish-${new Date().toISOString().split('T')[0]}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   if (appState === 'loading') {
@@ -243,20 +314,8 @@ export default function Home() {
             <div className="wish-text mb-6">
               "{wishText}"
             </div>
-
-            {/* Current stats */}
-            <div className="text-center mb-6">
-              <div className="vote-stats">
-                <span className="text-sm text-gray-600">
-                  {wishStatus && wishStatus.likes + wishStatus.dislikes > 0 
-                    ? `Current stats: ${wishStatus.likes} like${wishStatus.likes !== 1 ? 's' : ''}, ${wishStatus.dislikes} dislike${wishStatus.dislikes !== 1 ? 's' : ''}`
-                    : 'Be the first to vote!'
-                  }
-                </span>
-              </div>
-            </div>
             
-            {/* Voting buttons */}
+            {/* Voting and Share buttons */}
             <div className="flex gap-3 justify-center">
               <button
                 onClick={() => handleVote('like')}
@@ -271,6 +330,12 @@ export default function Home() {
                 className="vote-btn dislike-btn"
               >
                 {isVoting ? '...' : '👎 Dislike'}
+              </button>
+              <button
+                onClick={handleShare}
+                className="share-btn"
+              >
+                🔗 Share
               </button>
             </div>
           </div>
@@ -287,16 +352,90 @@ export default function Home() {
               <p className="text-lg font-semibold text-green-600 mb-4">
                 🎉 Thank you!
               </p>
-              <div className="vote-stats">
-                <span className="text-sm text-gray-600">
-                  {wishStatus && (
-                    <>
-                      Updated stats: {wishStatus.likes} like{wishStatus.likes !== 1 ? 's' : ''}, {wishStatus.dislikes} dislike{wishStatus.dislikes !== 1 ? 's' : ''}
-                      {' '}({wishStatus.likes + wishStatus.dislikes} total vote{wishStatus.likes + wishStatus.dislikes !== 1 ? 's' : ''})
-                    </>
-                  )}
-                </span>
+              <button
+                onClick={handleShare}
+                className="share-btn"
+              >
+                🔗 Share Wish
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* State D: Share Payment */}
+        {appState === 'share-payment' && (
+          <div>
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-bold text-gray-800 mb-4">
+                Share this wish
+              </h3>
+              <p className="text-gray-600 mb-2">
+                Cost: $0.0001
+              </p>
+              <p className="text-sm text-gray-500 mb-6">
+                Create a beautiful shareable image with your wish
+              </p>
+            </div>
+            
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={handlePayment}
+                disabled={isSharing}
+                className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-full transition-all duration-200 transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSharing ? '⏳ Processing...' : '✅ Pay & Share'}
+              </button>
+              <button
+                onClick={() => setAppState('revealed-not-voted')}
+                className="bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-6 rounded-full transition-all duration-200 transform hover:scale-105 shadow-lg"
+              >
+                ❌ Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* State E: Share Success */}
+        {appState === 'share-success' && (
+          <div>
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-bold text-green-600 mb-4">
+                🎉 Payment confirmed!
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Your shareable wish is ready
+              </p>
+            </div>
+            
+            {shareImageUrl && (
+              <div className="mb-6">
+                <img 
+                  src={shareImageUrl} 
+                  alt="Shareable wish" 
+                  className="w-full rounded-lg shadow-lg"
+                />
               </div>
+            )}
+            
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handlePostToFarcaster}
+                className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-full transition-all duration-200 transform hover:scale-105 shadow-lg"
+              >
+                📤 Post to Farcaster
+              </button>
+              <button
+                onClick={handleDownloadImage}
+                className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-full transition-all duration-200 transform hover:scale-105 shadow-lg"
+              >
+                ⬇️ Download Image
+              </button>
+              <button
+                onClick={() => setAppState('revealed-not-voted')}
+                className="text-gray-500 hover:text-gray-700 font-medium py-2"
+              >
+                Back to wish
+              </button>
             </div>
           </div>
         )}

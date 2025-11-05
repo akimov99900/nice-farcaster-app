@@ -30,13 +30,9 @@ export async function POST(request: NextRequest) {
       const hasVoted = (await kv.sismember(votersKey, fid.toString())) === 1;
       
       if (hasVoted) {
-        // Return current stats
-        const likes = await kv.get(likesKey) || 0;
-        const dislikes = await kv.get(dislikesKey) || 0;
+        // Return current status
         return NextResponse.json({ 
-          hasVoted: true, 
-          likes: Number(likes), 
-          dislikes: Number(dislikes) 
+          hasVoted: true
         });
       }
       
@@ -49,21 +45,14 @@ export async function POST(request: NextRequest) {
       
       await kv.sadd(votersKey, fid.toString());
       
-      const likes = await kv.get(likesKey) || 0;
-      const dislikes = await kv.get(dislikesKey) || 0;
-      
       return NextResponse.json({ 
-        hasVoted: true, 
-        likes: Number(likes), 
-        dislikes: Number(dislikes) 
+        hasVoted: true
       });
     } catch (kvError) {
       // KV not available (development mode), simulate voting
       console.log('KV not available, simulating vote');
       return NextResponse.json({ 
-        hasVoted: true, 
-        likes: vote === 'like' ? 1 : 0, 
-        dislikes: vote === 'dislike' ? 1 : 0 
+        hasVoted: true
       });
     }
     
