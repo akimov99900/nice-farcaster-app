@@ -1,474 +1,400 @@
-'use client';
+'use client'
 
-import { useState, useEffect } from 'react';
-import { getTodaysWish, getWishIndex } from '../lib/hash';
-import sdk from '@farcaster/frame-sdk';
+import { useEffect, useMemo, useState } from 'react'
+import * as FarcasterAuth from '@lab/farcaster-auth'
+import * as ColorExtraction from '@lab/color-extraction'
+import * as NftUtils from '@lab/nft-utils'
 
-interface User {
-  fid: number;
-  username?: string;
-  displayName?: string;
-  pfpUrl?: string;
+type BearBrickUser = {
+  fid: number
+  username?: string
+  displayName?: string
+  pfpUrl?: string
 }
 
-interface WishStatus {
-  wishIndex: number;
-  hasVoted: boolean;
+type AuthResult = {
+  status?: string
+  state?: string
+  user?: BearBrickUser | null
+  error?: unknown
+  mode?: string
+  isMock?: boolean
 }
 
-type AppState = 'loading' | 'not-revealed' | 'revealed-not-voted' | 'voted' | 'error' | 'share-payment' | 'share-success';
+type AppState = 'loading' | 'ready' | 'error'
+
+type ColorPair = {
+  primary: string
+  secondary: string
+}
+
+const DEFAULT_COLORS: ColorPair = {
+  primary: '#5ab0ff',
+  secondary: '#ff7bfb',
+}
+
+const FALLBACK_USER: BearBrickUser = {
+  fid: 777000,
+  username: 'bearbrick-demo',
+  displayName: 'BearBrick Explorer',
+}
+
+function useFallbackAuth(options?: { mockUser?: BearBrickUser }): AuthResult {
+  const [state, setState] = useState<'loading' | 'authenticated'>('loading')
+  const [user, setUser] = useState<BearBrickUser | null>(null)
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      const mock = options?.mockUser ?? FALLBACK_USER
+      setUser(mock)
+      setState('authenticated')
+    }, 500)
+
+    return () => clearTimeout(timeout)
+  }, [options?.mockUser])
+
+  return {
+    status: state,
+    user,
+    mode: 'mock',
+    isMock: true,
+  }
+}
+
+const useAuthHook: (options?: unknown) => AuthResult = (
+  ((FarcasterAuth as unknown as { useFarcasterAuth?: (options?: unknown) => AuthResult; default?: (options?: unknown) => AuthResult }).useFarcasterAuth ??
+    (FarcasterAuth as unknown as { useFarcasterAuth?: (options?: unknown) => AuthResult; default?: (options?: unknown) => AuthResult }).default ??
+    useFallbackAuth)
+) as (options?: unknown) => AuthResult
+
+function normalizeHex(input: string): string | null {
+  if (!input) return null
+  let value = input.trim().replace(/^0x/i, '')
+  if (!value) return null
+  if (value.startsWith('#')) {
+    value = value.slice(1)
+  }
+  if (!/^[0-9a-f]{3,8}$/i.test(value)) {
+    return null
+  }
+  if (value.length === 3 || value.length === 4) {
+    value = value
+      .slice(0, 3)
+      .split('')
+      .map((char) => char + char)
+      .join('')
+  }
+  if (value.length !== 6) {
+    value = value.padEnd(6, value[value.length - 1] ?? 'f').slice(0, 6)
+  }
+  return `#${value.toLowerCase()}`
+}
+
+function normalizeColor(color: string | undefined, fallback: string): string {
+  const fallbackHex = normalizeHex(fallback) ?? DEFAULT_COLORS.primary
+  if (!color) return fallbackHex
+  const trimmed = color.trim()
+  if (/^rgb/i.test(trimmed)) {
+    const channelMatches = trimmed.match(/\d+/g)
+    if (channelMatches && channelMatches.length >= 3) {
+      const [r, g, b] = channelMatches.slice(0, 3).map((value) => {
+        const parsed = Number.parseInt(value, 10)
+        if (Number.isNaN(parsed)) return 0
+        return Math.max(0, Math.min(255, parsed))
+      })
+      return `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
+    }
+    return fallbackHex
+  }
+  const normalised = normalizeHex(trimmed)
+  return normalised ?? fallbackHex
+}
+
+function lightenColor(hexColor: string, factor = 0.25): string {
+  const base = normalizeHex(hexColor)
+  if (!base) return hexColor
+  const value = base.slice(1)
+  const r = Number.parseInt(value.slice(0, 2), 16)
+  const g = Number.parseInt(value.slice(2, 4), 16)
+  const b = Number.parseInt(value.slice(4, 6), 16)
+  const mix = (channel: number) => Math.round(channel + (255 - channel) * Math.min(Math.max(factor, 0), 1))
+  return `#${[mix(r), mix(g), mix(b)].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
+}
+
+function withOpacity(hexColor: string, alpha: number): string {
+  const base = normalizeHex(hexColor) ?? normalizeHex(DEFAULT_COLORS.primary)
+  if (!base) {
+    return `rgba(255, 255, 255, ${alpha})`
+  }
+  const value = base.slice(1)
+  const r = Number.parseInt(value.slice(0, 2), 16)
+  const g = Number.parseInt(value.slice(2, 4), 16)
+  const b = Number.parseInt(value.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+function extractArrayOfColors(result: unknown): string[] {
+  if (!result) return []
+  if (typeof result === 'string') return [result]
+  if (Array.isArray(result)) return result.filter((value): value is string => typeof value === 'string')
+  if (typeof result === 'object') {
+    const output: string[] = []
+    const maybeRecord = result as Record<string, unknown>
+    if (typeof maybeRecord.primary === 'string') output.push(maybeRecord.primary)
+    if (typeof maybeRecord.secondary === 'string') output.push(maybeRecord.secondary)
+    if (Array.isArray(maybeRecord.colors)) {
+      output.push(...maybeRecord.colors.filter((value): value is string => typeof value === 'string'))
+    }
+    return output
+  }
+  return []
+}
 
 export default function Home() {
-  const [user, setUser] = useState<User | null>(null);
-  const [appState, setAppState] = useState<AppState>('loading');
-  const [wishText, setWishText] = useState<string>('');
-  const [wishStatus, setWishStatus] = useState<WishStatus | null>(null);
-  const [isVoting, setIsVoting] = useState(false);
-  const [isSharing, setIsSharing] = useState(false);
-  const [shareImageUrl, setShareImageUrl] = useState<string>('');
-  const [currentWishIndex, setCurrentWishIndex] = useState<number>(0);
+  const auth = useAuthHook({
+    mockUser: FALLBACK_USER,
+    fallbackUser: FALLBACK_USER,
+  })
 
-  // Initialize Farcaster SDK and authentication
+  const user = auth?.user ?? null
+  const statusText = `${auth?.status ?? auth?.state ?? ''}`.toLowerCase()
+
+  let appState: AppState = 'loading'
+  if (auth?.error || statusText.includes('error') || statusText.includes('fail')) {
+    appState = 'error'
+  } else if (user) {
+    appState = 'ready'
+  }
+
+  const [colors, setColors] = useState<ColorPair>(DEFAULT_COLORS)
+  const [colorSource, setColorSource] = useState<'avatar' | 'fallback'>('fallback')
+
   useEffect(() => {
-    const init = async () => {
+    const extractor =
+      (ColorExtraction as unknown as {
+        extractPalette?: (source: string, options?: unknown) => unknown
+        extractColors?: (source: string, options?: unknown) => unknown
+        default?: (source: string, options?: unknown) => unknown
+      }).extractPalette ??
+      (ColorExtraction as unknown as {
+        extractPalette?: (source: string, options?: unknown) => unknown
+        extractColors?: (source: string, options?: unknown) => unknown
+        default?: (source: string, options?: unknown) => unknown
+      }).extractColors ??
+      (ColorExtraction as unknown as {
+        extractPalette?: (source: string, options?: unknown) => unknown
+        extractColors?: (source: string, options?: unknown) => unknown
+        default?: (source: string, options?: unknown) => unknown
+      }).default
+
+    if (!user?.pfpUrl || typeof extractor !== 'function') {
+      setColors(DEFAULT_COLORS)
+      setColorSource('fallback')
+      return
+    }
+
+    let cancelled = false
+
+    const runExtraction = async () => {
       try {
-        // Initialize the SDK
-        await sdk.actions.ready();
-        
-        // Get user data from SDK context
-        const context = await sdk.context;
-        if (context && context.user) {
-          setUser({
-            fid: context.user.fid,
-            username: context.user.username,
-            displayName: context.user.displayName,
-            pfpUrl: context.user.pfpUrl
-          });
-        } else {
-          // Fallback for development/testing
-          setUser({
-            fid: 12345,
-            username: 'demo',
-            displayName: 'Demo User'
-          });
+        const result = await Promise.resolve(extractor(user.pfpUrl, { count: 2 }))
+        if (cancelled) return
+        const palette = extractArrayOfColors(result)
+        if (palette.length === 0) {
+          setColors(DEFAULT_COLORS)
+          setColorSource('fallback')
+          return
         }
+        const primary = normalizeColor(palette[0], DEFAULT_COLORS.primary)
+        const secondaryCandidate = palette[1] ? normalizeColor(palette[1], DEFAULT_COLORS.secondary) : null
+        const secondary = secondaryCandidate ?? normalizeColor(lightenColor(primary, 0.32), DEFAULT_COLORS.secondary)
+        setColors({ primary, secondary })
+        setColorSource('avatar')
       } catch (error) {
-        console.error('SDK initialization error:', error);
-        
-        // Always try to call ready() even if there's an error
-        try {
-          await sdk.actions.ready();
-        } catch (readyError) {
-          console.error('Ready call failed:', readyError);
-        }
-        
-        // Fallback for development
-        setUser({
-          fid: 12345,
-          username: 'demo',
-          displayName: 'Demo User'
-        });
+        if (cancelled) return
+        console.warn('Color extraction failed, using defaults.', error)
+        setColors(DEFAULT_COLORS)
+        setColorSource('fallback')
       }
-    };
-
-    init();
-  }, []);
-
-  // Check wish status when user is available
-  useEffect(() => {
-    if (user && user.fid) {
-      checkWishStatus(user.fid);
     }
-  }, [user]);
 
-  const checkWishStatus = async (fid: number) => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      
-      const response = await fetch(`/api/wish-status?fid=${fid}&date=${today}`);
-      if (response.ok) {
-        const data = await response.json();
-        setWishStatus(data);
-        setCurrentWishIndex(data.wishIndex);
-        
-        // Determine app state based on whether user has already voted
-        if (data.hasVoted) {
-          setWishText(getTodaysWish(fid));
-          setAppState('voted');
-        } else {
-          setAppState('not-revealed');
-        }
-      } else {
-        setAppState('error');
-      }
-    } catch (error) {
-      console.error('Failed to check wish status:', error);
-      setAppState('error');
+    runExtraction()
+
+    return () => {
+      cancelled = true
     }
-  };
+  }, [user?.pfpUrl])
 
-  const handleShowWish = async () => {
-    if (!user) return;
-    
-    setWishText(getTodaysWish(user.fid));
-    setAppState('revealed-not-voted');
-  };
+  const bearBrickMarkup = useMemo(() => {
+    const generator =
+      (NftUtils as unknown as {
+        createBearBrickSVG?: (options?: unknown) => unknown
+        renderBearBrick?: (options?: unknown) => unknown
+        generateBearBrick?: (options?: unknown) => unknown
+        default?: (options?: unknown) => unknown
+      }).createBearBrickSVG ??
+      (NftUtils as unknown as {
+        createBearBrickSVG?: (options?: unknown) => unknown
+        renderBearBrick?: (options?: unknown) => unknown
+        generateBearBrick?: (options?: unknown) => unknown
+        default?: (options?: unknown) => unknown
+      }).renderBearBrick ??
+      (NftUtils as unknown as {
+        createBearBrickSVG?: (options?: unknown) => unknown
+        renderBearBrick?: (options?: unknown) => unknown
+        generateBearBrick?: (options?: unknown) => unknown
+        default?: (options?: unknown) => unknown
+      }).generateBearBrick ??
+      (NftUtils as unknown as {
+        createBearBrickSVG?: (options?: unknown) => unknown
+        renderBearBrick?: (options?: unknown) => unknown
+        generateBearBrick?: (options?: unknown) => unknown
+        default?: (options?: unknown) => unknown
+      }).default
 
-  const handleVote = async (voteType: 'like' | 'dislike') => {
-    if (!user || isVoting) return;
-    
-    setIsVoting(true);
+    if (typeof generator !== 'function') {
+      return null
+    }
+
     try {
-      const today = new Date().toISOString().split('T')[0];
-      
-      const response = await fetch('/api/vote', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fid: user.fid.toString(),
-          wishIndex: currentWishIndex,
-          vote: voteType,
-          date: today
-        }),
-      });
-      
-      if (response.ok) {
-        setWishStatus({
-          wishIndex: currentWishIndex,
-          hasVoted: true
-        });
-        setAppState('voted');
+      const result = generator({
+        primaryColor: colors.primary,
+        secondaryColor: colors.secondary,
+        fid: user?.fid,
+        username: user?.username,
+        displayName: user?.displayName,
+      })
+      if (typeof result === 'string') return result
+      if (result && typeof result === 'object') {
+        const maybeRecord = result as Record<string, unknown>
+        if (typeof maybeRecord.svg === 'string') return maybeRecord.svg
+        if (typeof maybeRecord.markup === 'string') return maybeRecord.markup
       }
     } catch (error) {
-      console.error('Failed to vote:', error);
-    } finally {
-      setIsVoting(false);
+      console.error('BearBrick generation failed.', error)
     }
-  };
 
-  const handleShare = () => {
-    setAppState('share-payment');
-  };
-
-  const handlePayment = async () => {
-    if (!user) return;
-    
-    setIsSharing(true);
-    try {
-      // For now, simulate payment and proceed to image generation
-      // In a real implementation, you would integrate with Base network payments
-      console.log('Processing payment for share functionality...');
-      
-      // Simulate payment processing delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Generate share image after "successful" payment
-      await generateShareImage();
-      setAppState('share-success');
-    } catch (error) {
-      console.error('Payment failed:', error);
-      setAppState('revealed-not-voted');
-    } finally {
-      setIsSharing(false);
-    }
-  };
-
-  const generateShareImage = async () => {
-    if (!user || !wishText) return;
-    
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const response = await fetch('/api/generate-share-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          wishText,
-          date: today,
-          username: user.username || user.displayName
-        }),
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setShareImageUrl(data.imageUrl);
-      }
-    } catch (error) {
-      console.error('Failed to generate share image:', error);
-    }
-  };
-
-  const handlePostToFarcaster = async () => {
-    if (!shareImageUrl || !user) return;
-    
-    try {
-      // Create a cast with the share image
-      const castText = `✨ My daily wish from nice:\n\n"${wishText}"\n\nGet your daily wish at nice!`;
-      
-      // Try to use composeCast if available, otherwise fallback to copying text
-      if (sdk.actions.composeCast) {
-        await sdk.actions.composeCast({
-          text: castText,
-          embeds: [shareImageUrl]
-        });
-      } else {
-        // Fallback: copy text to clipboard
-        await navigator.clipboard.writeText(castText + '\n\n' + shareImageUrl);
-        alert('Cast text and image URL copied to clipboard!');
-      }
-    } catch (error) {
-      console.error('Failed to post to Farcaster:', error);
-      // Fallback: copy text to clipboard
-      const castText = `✨ My daily wish from nice:\n\n"${wishText}"\n\nGet your daily wish at nice!`;
-      await navigator.clipboard.writeText(castText + '\n\n' + shareImageUrl);
-      alert('Cast text and image URL copied to clipboard!');
-    }
-  };
-
-  const handleDownloadImage = () => {
-    if (!shareImageUrl) return;
-    
-    const link = document.createElement('a');
-    link.href = shareImageUrl;
-    link.download = `nice-wish-${new Date().toISOString().split('T')[0]}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  if (appState === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="wish-card">
-          <div className="text-center">
-            <div className="loading-spinner mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading your daily wish...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (appState === 'error' || !user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="wish-card">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-800 mb-4">Welcome to nice</h1>
-            <p className="text-gray-600 mb-6">
-              Please open this app in Farcaster to receive your daily positive wish.
-            </p>
-            <div className="text-sm text-gray-500">
-              This app requires Farcaster authentication to work properly.
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    return null
+  }, [colors.primary, colors.secondary, user?.displayName, user?.fid, user?.username])
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4">
-      <div className="wish-card">
-        {/* User Info */}
-        <div className="flex items-center justify-center mb-6">
-          {user.pfpUrl && (
-            <img 
-              src={user.pfpUrl} 
-              alt={user.displayName || user.username}
-              className="w-12 h-12 rounded-full mr-3"
-            />
-          )}
-          <div className="text-center">
-            <h2 className="text-lg font-semibold text-gray-800">
-              Hello, {user.displayName || user.username}!
-            </h2>
-            <p className="text-sm text-gray-600">{currentDate}</p>
-          </div>
-        </div>
-
-        {/* State A: Not Revealed */}
-        {appState === 'not-revealed' && (
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-800 mb-4">Get your daily wish!</h1>
-            <p className="text-gray-600 mb-8">
-              Your personalized positive wish is waiting for you
-            </p>
-            <button
-              onClick={handleShowWish}
-              className="bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-bold py-3 px-8 rounded-full transition-all duration-200 transform hover:scale-105 shadow-lg"
-            >
-              Show My Wish
-            </button>
-          </div>
-        )}
-
-        {/* State B: Revealed, Not Voted */}
-        {appState === 'revealed-not-voted' && (
-          <div>
-            <div className="wish-text mb-6">
-              "{wishText}"
-            </div>
-            
-            {/* Voting and Share buttons */}
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => handleVote('like')}
-                disabled={isVoting}
-                className="vote-btn like-btn"
-              >
-                {isVoting ? '...' : '👍 Like'}
-              </button>
-              <button
-                onClick={() => handleVote('dislike')}
-                disabled={isVoting}
-                className="vote-btn dislike-btn"
-              >
-                {isVoting ? '...' : '👎 Dislike'}
-              </button>
-              <button
-                onClick={handleShare}
-                className="share-btn"
-              >
-                🔗 Share
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* State C: Voted */}
-        {appState === 'voted' && (
-          <div>
-            <div className="wish-text mb-6">
-              "{wishText}"
-            </div>
-
-            <div className="text-center">
-              <p className="text-lg font-semibold text-green-600 mb-4">
-                🎉 Thank you!
-              </p>
-              <button
-                onClick={handleShare}
-                className="share-btn"
-              >
-                🔗 Share Wish
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* State D: Share Payment */}
-        {appState === 'share-payment' && (
-          <div>
-            <div className="text-center mb-6">
-              <h3 className="text-xl font-bold text-gray-800 mb-4">
-                Share this wish
-              </h3>
-              <p className="text-gray-600 mb-2">
-                Cost: $0.0001
-              </p>
-              <p className="text-sm text-gray-500 mb-6">
-                Create a beautiful shareable image with your wish
-              </p>
-            </div>
-            
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={handlePayment}
-                disabled={isSharing}
-                className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-full transition-all duration-200 transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSharing ? '⏳ Processing...' : '✅ Pay & Share'}
-              </button>
-              <button
-                onClick={() => setAppState('revealed-not-voted')}
-                className="bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-6 rounded-full transition-all duration-200 transform hover:scale-105 shadow-lg"
-              >
-                ❌ Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* State E: Share Success */}
-        {appState === 'share-success' && (
-          <div>
-            <div className="text-center mb-6">
-              <h3 className="text-xl font-bold text-green-600 mb-4">
-                🎉 Payment confirmed!
-              </h3>
-              <p className="text-gray-600 mb-4">
-                Your shareable wish is ready
-              </p>
-            </div>
-            
-            {shareImageUrl && (
-              <div className="mb-6">
-                <img 
-                  src={shareImageUrl} 
-                  alt="Shareable wish" 
-                  className="w-full rounded-lg shadow-lg"
-                />
+    <main className="flex min-h-screen items-center justify-center px-4 py-12">
+      <div className="bearbrick-shell">
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-4">
+              <div className="profile-ring" aria-hidden={!user?.pfpUrl}>
+                {user?.pfpUrl ? (
+                  <img src={user.pfpUrl} alt={`${user.displayName ?? user.username ?? 'Farcaster user'} avatar`} />
+                ) : (
+                  <span role="img" aria-label="BearBrick">
+                    🧸
+                  </span>
+                )}
               </div>
-            )}
-            
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={handlePostToFarcaster}
-                className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-full transition-all duration-200 transform hover:scale-105 shadow-lg"
-              >
-                📤 Post to Farcaster
-              </button>
-              <button
-                onClick={handleDownloadImage}
-                className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-full transition-all duration-200 transform hover:scale-105 shadow-lg"
-              >
-                ⬇️ Download Image
-              </button>
-              <button
-                onClick={() => setAppState('revealed-not-voted')}
-                className="text-gray-500 hover:text-gray-700 font-medium py-2"
-              >
-                Back to wish
-              </button>
+              <div>
+                <p className="bearbrick-status">BearBrick</p>
+                <h1 className="bearbrick-headline">Personalized NFT Preview</h1>
+              </div>
             </div>
+            <p className="bearbrick-subtitle">
+              {user?.displayName ?? user?.username
+                ? `${user.displayName ?? user.username}\u2019s BearBrick is styled with tones sampled from their Farcaster avatar.`
+                : 'Authenticate with Farcaster to see a BearBrick companion styled with tones sampled from your avatar.'}
+            </p>
           </div>
+
+          <div className="flex items-start justify-end">
+            <span className="fid-badge">
+              <span>FID</span>
+              <strong>{user?.fid ?? '—'}</strong>
+            </span>
+          </div>
+        </div>
+
+        <div className="section-divider" aria-hidden="true" />
+
+        {appState === 'loading' && (
+          <section className="flex flex-col items-center gap-6 text-center" aria-live="polite">
+            <div className="bearbrick-preview">
+              <div className="bearbrick-fallback">
+                <div className="bearbrick-fallback-icon" role="img" aria-label="Loading BearBrick preview">
+                  🧩
+                </div>
+                <p>Preparing your BearBrick preview—syncing identity data.</p>
+              </div>
+            </div>
+            <p className="muted-note">Connecting to Farcaster and aligning your avatar palette.</p>
+          </section>
         )}
 
-        {/* Footer */}
-        <div className="mt-8 pt-6 border-t border-yellow-200 text-center">
-          <p className="text-xs text-gray-500">
-            Your wish is personalized just for you based on your Farcaster ID
-          </p>
-          <p className="text-xs text-gray-500 mt-1">
-            Come back tomorrow for a new inspiration!
-          </p>
-        </div>
-      </div>
+        {appState === 'error' && (
+          <section className="flex flex-col items-center gap-6 text-center" aria-live="assertive">
+            <div className="bearbrick-preview">
+              <div className="bearbrick-fallback">
+                <div className="bearbrick-fallback-icon" role="img" aria-label="Authentication error">
+                  ⚠️
+                </div>
+                <p>We couldn’t verify your Farcaster account.</p>
+                <p className="muted-note">Open BearBrick inside the Farcaster client or try again shortly.</p>
+              </div>
+            </div>
+          </section>
+        )}
 
-      {/* App Branding */}
-      <div className="mt-8 text-center">
-        <div className="flex items-center justify-center mb-2">
-          <svg width="24" height="24" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg" className="mr-2">
-            <circle cx="90" cy="90" r="85" fill="#FFD700" stroke="#FFA500" strokeWidth="5"/>
-            <circle cx="90" cy="90" r="75" fill="#FFED4E"/>
-            <path d="M60 75C60 75 70 85 90 85C110 85 120 75 120 75" stroke="#FF8C00" strokeWidth="4" strokeLinecap="round"/>
-            <circle cx="65" cy="65" r="8" fill="#FF6B35"/>
-            <circle cx="115" cy="65" r="8" fill="#FF6B35"/>
-            <path d="M75 100C85 110 95 110 105 100" stroke="#FF8C00" strokeWidth="3" strokeLinecap="round"/>
-            <path d="M45 120C55 130 125 130 135 120" stroke="#FFA500" strokeWidth="3" strokeLinecap="round"/>
-          </svg>
-          <span className="font-bold text-gray-700">nice</span>
-        </div>
-        <p className="text-xs text-gray-500">
-          Daily positive wishes for everyone
-        </p>
+        {appState === 'ready' && (
+          <section className="flex flex-col gap-8" aria-live="polite">
+            <div className="bearbrick-preview" style={{
+              background: `linear-gradient(135deg, ${withOpacity(colors.primary, 0.18)} 0%, ${withOpacity(colors.secondary, 0.3)} 100%)`,
+            }}>
+              {bearBrickMarkup ? (
+                <div aria-label="BearBrick NFT preview" dangerouslySetInnerHTML={{ __html: bearBrickMarkup }} />
+              ) : (
+                <div className="bearbrick-fallback">
+                  <div className="bearbrick-fallback-icon" role="img" aria-label="BearBrick preview placeholder">
+                    🧸
+                  </div>
+                  <p>BearBrick render will appear once the generator responds.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div
+                className="color-pill"
+                style={{
+                  borderColor: withOpacity(colors.primary, 0.35),
+                  background: withOpacity(colors.primary, 0.12),
+                }}
+              >
+                <span className="color-swatch" style={{ background: colors.primary }} aria-hidden="true" />
+                <div>
+                  <p className="text-xs uppercase tracking-[0.25em] text-white/60">Primary hue</p>
+                  <p className="text-base font-semibold">{colors.primary}</p>
+                </div>
+              </div>
+
+              <div
+                className="color-pill"
+                style={{
+                  borderColor: withOpacity(colors.secondary, 0.35),
+                  background: withOpacity(colors.secondary, 0.12),
+                }}
+              >
+                <span className="color-swatch" style={{ background: colors.secondary }} aria-hidden="true" />
+                <div>
+                  <p className="text-xs uppercase tracking-[0.25em] text-white/60">Accent hue</p>
+                  <p className="text-base font-semibold">{colors.secondary}</p>
+                </div>
+              </div>
+            </div>
+
+            <p className="muted-note">
+              Palette source: {colorSource === 'avatar' ? 'derived from your Farcaster avatar' : 'default BearBrick spectrum'}.
+            </p>
+          </section>
+        )}
       </div>
-    </div>
-  );
+    </main>
+  )
 }

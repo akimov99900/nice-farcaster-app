@@ -1,7 +1,7 @@
 {
-  "name": "nice-miniapp",
-  "version": "1.0.0",
-  "description": "A Farcaster mini-app that delivers daily positive wishes",
+  "name": "bearbrick-miniapp",
+  "version": "1.1.0",
+  "description": "A Farcaster mini-app that previews personalized BearBrick NFTs",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,14 +9,12 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@farcaster/auth-kit": "^0.1.0",
-    "@farcaster/frame-sdk": "^0.0.64",
-    "@vercel/kv": "latest",
-    "@vercel/og": "^0.8.5",
+    "@lab/color-extraction": "file:packages/color-extraction",
+    "@lab/farcaster-auth": "file:packages/farcaster-auth",
+    "@lab/nft-utils": "file:packages/nft-utils",
     "next": "^14.0.0",
     "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "viem": "^2.38.6"
+    "react-dom": "^18.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

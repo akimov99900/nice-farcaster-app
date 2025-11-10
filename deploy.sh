@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Nice Mini-App Deployment Script
-# This script helps deploy the nice mini-app to Vercel
+# BearBrick Mini-App Deployment Script
+# This script helps deploy the BearBrick mini-app to Vercel
 
-echo "🌟 Nice Mini-App Deployment Script"
-echo "=================================="
+echo "🧸 BearBrick Mini-App Deployment Script"
+echo "======================================="
 
 # Check if Vercel CLI is installed
 if ! command -v vercel &> /dev/null; then
