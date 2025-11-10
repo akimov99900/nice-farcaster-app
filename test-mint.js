@@ -1,17 +1,13 @@
 // Simple test script to verify mint functionality
-const { createPublicClientForBase, checkMintStatus, generateTokenURI } = require('./lib/viem-client')
+const { createPublicClientForBase, checkMintStatus } = require('./lib/viem-client')
 
 async function testMintFunctionality() {
   console.log('Testing BearBrick mint functionality...')
   
   try {
-    // Test 1: Generate token URI
-    const testFid = 777000
-    const tokenUri = generateTokenURI(testFid, 'bearbrick-demo', 'BearBrick Explorer')
-    console.log('✓ Token URI generated:', tokenUri)
-    
-    // Test 2: Check mint status (this will likely fail in development without real contract)
+    // Test 1: Check mint status (this will likely fail in development without real contract)
     try {
+      const testFid = 777000
       const mintStatus = await checkMintStatus(testFid)
       console.log('✓ Mint status checked:', mintStatus)
     } catch (error) {
@@ -19,6 +15,9 @@ async function testMintFunctionality() {
     }
     
     console.log('✓ All basic tests passed!')
+    console.log('')
+    console.log('Note: Token URI generation now happens via POST /api/token-uri endpoint')
+    console.log('This endpoint generates metadata and tokenUri for contract minting')
   } catch (error) {
     console.error('✗ Test failed:', error)
   }

@@ -38,21 +38,27 @@ BearBrick is a Farcaster mini-app that welcomes members of the network with a pe
 /
 ├── app/
 │   ├── api/
-│   │   ├── health/route.ts      # Health check endpoint
-│   │   └── info/route.ts        # App metadata endpoint
-│   ├── globals.css              # Global BearBrick styling
-│   ├── layout.tsx               # Root layout + metadata
-│   └── page.tsx                 # BearBrick preview states
+│   │   ├── health/route.ts           # Health check endpoint
+│   │   ├── info/route.ts             # App metadata endpoint
+│   │   ├── image/[fid]/route.ts      # BearBrick SVG image generation
+│   │   ├── metadata/[fid]/route.ts   # ERC721 metadata endpoint
+│   │   └── token-uri/route.ts        # Token URI generation for minting
+│   ├── globals.css                   # Global BearBrick styling
+│   ├── layout.tsx                    # Root layout + metadata
+│   └── page.tsx                      # BearBrick preview and mint flow
+├── lib/
+│   └── viem-client.ts                # Web3 utilities for minting and contract interaction
 ├── public/
-│   ├── icon.svg                 # BearBrick app icon
-│   └── manifest.json            # Mini-app manifest
+│   ├── icon.svg                      # BearBrick app icon
+│   └── manifest.json                 # Mini-app manifest
 ├── packages/
-│   ├── color-extraction/        # Local implementation of @lab/color-extraction
-│   ├── farcaster-auth/          # Local implementation of @lab/farcaster-auth
-│   └── nft-utils/               # Local implementation of @lab/nft-utils
-├── types/lab.d.ts               # Module declarations for @lab packages
-├── next.config.js               # Next.js configuration (includes Farcaster manifest redirect)
-├── package.json                 # Scripts & dependencies
+│   ├── bearbrick-contract/           # BearBrick NFT contract ABI and addresses
+│   ├── color-extraction/             # Color palette extraction utilities
+│   ├── farcaster-auth/               # Farcaster authentication helpers
+│   └── nft-utils/                    # BearBrick SVG generation utilities
+├── types/lab.d.ts                    # Module declarations for @lab packages
+├── next.config.js                    # Next.js configuration
+├── package.json                      # Scripts & dependencies
 └── README.md
 ```
 
@@ -81,16 +87,60 @@ Mock mode mirrors the ready state so designers and engineers can iterate locally
 
 ## 🔌 API Surface
 
-| Endpoint        | Method | Purpose                                      |
-|-----------------|--------|----------------------------------------------|
-| `/api/health`   | GET    | Returns uptime, timestamp, and health status |
-| `/api/info`     | GET    | Exposes version, features, and endpoint list |
+| Endpoint           | Method | Purpose                                                                          |
+|--------------------|--------|----------------------------------------------------------------------------------|
+| `/api/health`      | GET    | Returns uptime, timestamp, and health status                                     |
+| `/api/info`        | GET    | Exposes version, features, and endpoint list                                     |
+| `/api/token-uri`   | POST   | Generates BearBrick metadata and encoded token URI for NFT minting               |
+| `/api/image/[fid]` | GET    | Returns BearBrick SVG image for a given FID                                     |
+| `/api/metadata/[fid]` | GET | Returns ERC721 metadata JSON for a given FID                                   |
+
+### Token URI Endpoint
+
+The `/api/token-uri` endpoint generates complete metadata and an encoded token URI in a single request:
+
+**Request:**
+```json
+{
+  "fid": 1234,
+  "username": "vitalik",
+  "displayName": "Vitalik Buterin",
+  "primaryColor": "#5ab0ff",
+  "secondaryColor": "#ff7bfb"
+}
+```
+
+**Response:**
+```json
+{
+  "metadata": {
+    "name": "Vitalik Buterin's BearBrick",
+    "description": "A personalized BearBrick NFT generated for Vitalik Buterin...",
+    "image": "data:image/svg+xml;base64,<encoded SVG>",
+    "external_url": "https://your-app-url.vercel.app",
+    "attributes": [...]
+  },
+  "tokenUri": "data:application/json;base64,<encoded metadata>"
+}
+```
+
+**Features:**
+- Accepts FID, username, and color pair
+- Validates color hex codes (6-character format)
+- Generates inline SVG as base64 data URL
+- Returns metadata and tokenUri for contract minting
+- Caches results per FID per session (1-hour TTL)
+- Handles errors gracefully with descriptive messages
 
 ## ⚙️ Environment Variables
 
-| Variable                | Required | Description                                      |
-|-------------------------|----------|--------------------------------------------------|
-| `NEXT_PUBLIC_APP_URL`   | No       | Overrides metadata base URL for production links |
+| Variable                                       | Required | Description                                      |
+|------------------------------------------------|----------|--------------------------------------------------|
+| `NEXT_PUBLIC_APP_URL`                          | No       | Base URL for metadata generation and token URIs (defaults to production URL)  |
+| `NEXT_PUBLIC_BEARBRICK_CONTRACT_ADDRESS_BASE`  | Yes      | BearBrick NFT contract address on Base mainnet  |
+| `NEXT_PUBLIC_BEARBRICK_CONTRACT_ADDRESS_BASE_SEPOLIA` | Yes | BearBrick NFT contract address on Base Sepolia (development) |
+| `NEXT_PUBLIC_BASE_RPC_URL`                     | Yes      | RPC URL for Base mainnet  |
+| `NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL`             | Yes      | RPC URL for Base Sepolia (development) |
 
 ## 🧱 Key Dependencies
 
