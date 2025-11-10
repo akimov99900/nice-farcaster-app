@@ -1,0 +1,11 @@
+{
+  "name": "@lab/bearbrick-contract",
+  "version": "0.1.0",
+  "main": "index.js",
+  "module": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "dependencies": {
+    "viem": "^2.0.0"
+  }
+}

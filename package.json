@@ -9,12 +9,14 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@lab/bearbrick-contract": "file:packages/bearbrick-contract",
     "@lab/color-extraction": "file:packages/color-extraction",
     "@lab/farcaster-auth": "file:packages/farcaster-auth",
     "@lab/nft-utils": "file:packages/nft-utils",
     "next": "^14.0.0",
     "react": "^18.0.0",
-    "react-dom": "^18.0.0"
+    "react-dom": "^18.0.0",
+    "viem": "^2.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
