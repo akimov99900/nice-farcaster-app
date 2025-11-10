@@ -72,13 +72,6 @@ export async function checkMintStatus(fid: number): Promise<{ hasMinted: boolean
   }
 }
 
-// Generate token URI for the mint
-export function generateTokenURI(fid: number, username?: string, displayName?: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-app-url.vercel.app'
-  const userLabel = displayName || username || `fid-${fid}`
-  return `${baseUrl}/api/metadata/${fid}?user=${encodeURIComponent(userLabel)}`
-}
-
 // Mint function for Farcaster wallet
 export async function mintWithFarcasterWallet(
   fid: number,

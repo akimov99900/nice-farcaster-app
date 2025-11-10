@@ -8,7 +8,6 @@ import {
   checkMintStatus, 
   mintWithFarcasterWallet, 
   mintWithMetaMask, 
-  generateTokenURI,
   generateOpenSeaLink,
   generateBlockExplorerLink,
   type MintStatus,
@@ -183,6 +182,9 @@ export default function Home() {
   const [mintStatus, setMintStatus] = useState<MintStatus>('idle')
   const [mintData, setMintData] = useState<MintData>({})
   const [isCheckingMintStatus, setIsCheckingMintStatus] = useState(false)
+  
+  // Token URI cache per FID
+  const [tokenUriCache, setTokenUriCache] = useState<Map<number, string>>(new Map())
 
   useEffect(() => {
     const extractor =
@@ -273,7 +275,46 @@ export default function Home() {
     try {
       setMintStatus('minting')
       
-      const tokenUri = generateTokenURI(user.fid, user.username, user.displayName)
+      // Check cache first
+      let tokenUri = tokenUriCache.get(user.fid)
+      
+      if (!tokenUri) {
+        // Call token-uri endpoint to generate metadata and tokenUri
+        const response = await fetch('/api/token-uri', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fid: user.fid,
+            username: user.username,
+            displayName: user.displayName,
+            primaryColor: colors.primary,
+            secondaryColor: colors.secondary,
+          }),
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || 'Failed to generate token URI')
+        }
+
+        const { tokenUri: generatedTokenUri } = await response.json()
+        tokenUri = generatedTokenUri
+        
+        if (!tokenUri) {
+          throw new Error('No token URI received from endpoint')
+        }
+        
+        // Cache the result
+        setTokenUriCache(prev => {
+          const updated = new Map(prev)
+          updated.set(user.fid, tokenUri as string)
+          return updated
+        })
+      }
+      
+      if (!tokenUri) {
+        throw new Error('Failed to obtain token URI')
+      }
       
       // Try Farcaster wallet first, then fallback to MetaMask
       let result
