@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   return NextResponse.json({
-    status: 'healthy',
+    status: 'ok',
+    brand: 'BearBrick',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
   });
 }

@@ -1,11 +1,11 @@
 {
-  "name": "nice",
-  "short_name": "nice",
-  "description": "Get your daily personalized wish",
+  "name": "BearBrick",
+  "short_name": "BearBrick",
+  "description": "Preview your personalized BearBrick NFT companion",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "background_color": "#0b0d1d",
+  "theme_color": "#1b133f",
   "icons": [
     {
       "src": "/icon.svg",

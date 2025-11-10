@@ -5,14 +5,18 @@ export async function GET(request: NextRequest) {
     // This would handle server-side Farcaster auth if needed
     // For now, return basic app info
     return NextResponse.json({
-      name: 'nice',
-      version: '1.0.0',
-      description: 'A daily dose of positive wishes and inspiration',
+      name: 'BearBrick',
+      version: '1.1.0',
+      description: 'Personalized BearBrick NFT preview for Farcaster users',
       endpoints: {
         health: '/api/health',
         info: '/api/info',
-        vote: '/api/vote'
-      }
+      },
+      features: [
+        'Farcaster authentication via @lab/farcaster-auth',
+        'Avatar-driven color extraction',
+        'Inline BearBrick SVG preview with graceful fallbacks',
+      ],
     });
   } catch (error) {
     return NextResponse.json(

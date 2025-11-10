@@ -1,27 +1,27 @@
 import './globals.css'
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Space_Grotesk } from 'next/font/google'
 
-const inter = Inter({ subsets: ['latin'] })
+const spaceGrotesk = Space_Grotesk({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://nice-miniapp.vercel.app'),
-  title: 'nice - Daily Positive Wishes',
-  description: 'A daily dose of positive wishes and inspiration',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://bearbrick-miniapp.vercel.app'),
+  title: 'BearBrick — Personalized NFT Preview',
+  description: 'Authenticate with Farcaster to unveil your customized BearBrick companion.',
   manifest: '/manifest.json',
   icons: {
     icon: '/icon.svg',
     apple: '/icon.svg',
   },
   openGraph: {
-    title: 'nice - Daily Positive Wishes',
-    description: 'A daily dose of positive wishes and inspiration',
+    title: 'BearBrick — Personalized NFT Preview',
+    description: 'Preview your BearBrick NFT styled by your Farcaster identity.',
     images: ['/icon.svg'],
   },
   twitter: {
     card: 'summary',
-    title: 'nice - Daily Positive Wishes',
-    description: 'A daily dose of positive wishes and inspiration',
+    title: 'BearBrick — Personalized NFT Preview',
+    description: 'Preview your BearBrick NFT styled by your Farcaster identity.',
     images: ['/icon.svg'],
   },
 }
@@ -35,11 +35,11 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#FFD700" />
+        <meta name="theme-color" content="#1b133f" />
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/icon.svg" />
       </head>
-      <body className={inter.className}>
+      <body className={`${spaceGrotesk.className} bearbrick-body`}>
         {children}
       </body>
     </html>
